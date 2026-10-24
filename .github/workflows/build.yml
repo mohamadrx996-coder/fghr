@@ -1,0 +1,62 @@
+name: Build EXE
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "script path"
+        default: "script.py"
+      name:
+        description: "app name"
+        default: "app"
+      packages:
+        description: "extra packages (space separated)"
+        default: ""
+      onefile:
+        description: "single exe"
+        type: boolean
+        default: true
+      noconsole:
+        description: "no console window"
+        type: boolean
+        default: false
+  push:
+    paths:
+      - "script.py"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      SCRIPT: ${{ inputs.script || 'script.py' }}
+      NAME: ${{ inputs.name || 'app' }}
+      PACKAGES: ${{ inputs.packages }}
+      ONEFILE: ${{ github.event_name == 'push' && 'true' || inputs.onefile }}
+      NOCONSOLE: ${{ github.event_name == 'push' && 'false' || inputs.noconsole }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+          if ($env:PACKAGES) { pip install $env:PACKAGES.Split(' ', [StringSplitOptions]::RemoveEmptyEntries) }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $a = @('--noconfirm', '--clean', '--name', $env:NAME)
+          if ($env:ONEFILE -eq 'true') { $a += '--onefile' }
+          if ($env:NOCONSOLE -eq 'true') { $a += '--noconsole' }
+          $a += $env:SCRIPT
+          python -m PyInstaller @a
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}-windows
+          path: dist/
